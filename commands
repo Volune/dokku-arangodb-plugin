@@ -1,0 +1,125 @@
+#!/bin/bash
+set -e;
+
+# Check if name is specified
+if [[ $1 == arangodb:* ]]; then
+    if [[ -z $2 ]]; then
+        echo "You must specify an app name"
+        exit 1
+    else
+        APP="$2"
+        # Check if app exists with the same name
+        if [[ -d "$DOKKU_ROOT/$APP" ]]; then
+            APP_EXISTS=true
+        else
+            APP_EXISTS=false
+        fi
+    fi
+    if [[ ! -d "$PLUGIN_PATH/link" ]]; then
+        echo "Link plugin not found... Did you install it from https://github.com/rlaneve/dokku-link?"
+        exit 1
+    fi
+
+    PLUGIN_NAME="arangodb"
+    CONTAINER_NAME="${PLUGIN_NAME}_${APP}"
+    HOST_DIR="$DOKKU_ROOT/$APP/$PLUGIN_NAME"
+    ENVVAR_NAME="ARANGODB_URL"
+fi
+
+case "$1" in
+  arangodb:create)
+    # Check if ArangoDB image is built
+    IMAGE=$(docker images | grep "arangodb" | awk '{print $3}')
+    if [[ -z $IMAGE ]]; then
+        echo "ArangoDB image not found... Did you run 'dokku plugins-install' ?"
+        exit 1
+    fi
+
+    # Stop existing ArangoDB container
+    ID=$(docker ps | grep "$CONTAINER_NAME" | awk '{print $1}')
+    if [[ ! -z "$ID" ]]; then
+        docker stop $ID > /dev/null
+    fi
+
+    # Check if an existing DB volume exists
+    if [[ -d $HOST_DIR ]]; then
+        echo "-----> Reusing $CONTAINER_NAME data"
+    else
+        mkdir -p $HOST_DIR
+        chown -R dokku:dokku $HOST_DIR
+    fi
+    VOLUME="$HOST_DIR:/var/lib/arangodb"
+
+    # Launch container
+    docker run -name=$CONTAINER_NAME -d arangodb service arangodb start
+
+    # Link to a potential existing app
+    dokku arangodb:link $APP $APP
+    echo "-----> ArangoDB container created: $CONTAINER_NAME"
+    sleep 1
+    dokku arangodb:info $APP
+    ;;
+
+  arangodb:delete)
+    # Stop the container
+    ID=$(docker ps -a | grep "$CONTAINER_NAME" |  awk '{print $1}')
+    if [[ ! -z $ID ]]; then
+        docker stop $ID > /dev/null
+        docker rm $ID  > /dev/null
+    fi
+    # Remove persistent volume
+    if [[ -d $HOST_DIR ]]; then
+        rm -rf $HOST_DIR
+    fi
+
+    # unlink this container as "arangodb"
+    dokku link:delete "$APP" "$CONTAINER_NAME" "$PLUGIN_NAME"
+    dokku config:unset "$APP" $ENVVAR_NAME
+    echo "-----> ArangoDB container deleted: $CONTAINER_NAME"
+    ;;
+
+  arangodb:info)
+    ID=$(docker ps -a | grep "$CONTAINER_NAME" | awk '{print $1}')
+    IP=$(docker inspect $ID | grep IPAddress | cut -d '"' -f 4)
+    echo
+    echo "       Host: ${IP}"
+    echo "       Private ports: 8529"
+    echo
+    ;;
+
+  arangodb:link)
+    if $APP_EXISTS; then
+        # Check argument
+        if [[ -z $3 ]]; then
+            echo "You must specify a container name"
+            exit 1
+        fi
+        CONTAINER_NAME="${PLUGIN_NAME}_${3}"
+
+        # link this container as "arangodb"
+        dokku link:create "$APP" "$CONTAINER_NAME" "$PLUGIN_NAME"
+
+        # figure out IP to set env var
+        ID=$(docker ps -a | grep "$CONTAINER_NAME" | awk '{print $1}')
+        IP=$(docker inspect $ID | grep IPAddress | cut -d '"' -f 4)
+        dokku config:set "$APP" $ENVVAR_NAME="http://${IP}:8529"
+        echo "-----> $APP linked to $CONTAINER_NAME container"
+    fi
+    ;;
+
+  arangodb:logs)
+    ID=$(docker ps -a | grep "$CONTAINER_NAME" |  awk '{print $1}')
+    docker logs $ID | tail -n 100
+    ;;
+
+  help)
+    cat && cat<<EOF
+    arangodb:create <app>                              Create a ArangoDB container
+    arangodb:delete <app>                              Delete specified ArangoDB container
+    arangodb:info <app>                                Display container informations
+    arangodb:link <app> <container>                    Link an app to a ArangoDB container
+    arangodb:logs <app>                                Display last logs from ArangoDB container
+EOF
+    ;;
+
+esac
