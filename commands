@@ -54,7 +54,9 @@ case "$1" in
     docker run -name=$CONTAINER_NAME -d arangodb service arangodb start
 
     # Link to a potential existing app
-    dokku arangodb:link $APP $APP
+    if $APP_EXISTS; then
+        dokku arangodb:link $APP $APP
+    fi
     echo "-----> ArangoDB container created: $CONTAINER_NAME"
     sleep 1
     dokku arangodb:info $APP
@@ -73,8 +75,10 @@ case "$1" in
     fi
 
     # unlink this container as "arangodb"
-    dokku link:delete "$APP" "$CONTAINER_NAME" "$PLUGIN_NAME"
-    dokku config:unset "$APP" $ENVVAR_NAME
+    if $APP_EXISTS; then
+        dokku link:delete "$APP" "$CONTAINER_NAME" "$PLUGIN_NAME"
+        dokku config:unset "$APP" $ENVVAR_NAME
+    fi
     echo "-----> ArangoDB container deleted: $CONTAINER_NAME"
     ;;
 
