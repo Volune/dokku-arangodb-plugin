@@ -51,7 +51,7 @@ case "$1" in
     VOLUME="$HOST_DIR:/var/lib/arangodb"
 
     # Launch container
-    docker run -name=$CONTAINER_NAME -d arangodb service arangodb start
+    docker run -name=$CONTAINER_NAME -d arangodb /bin/bash -c "service arangodb start; tail -f /var/log/arangodb/arangod.log"
 
     # Link to a potential existing app
     if $APP_EXISTS; then
