@@ -9,7 +9,7 @@ if [[ $1 == arangodb:* ]]; then
     else
         APP="$2"
         # Check if app exists with the same name
-        if [[ -d "$DOKKU_ROOT/$APP" ]]; then
+        if [[ -f "$DOKKU_ROOT/$APP/CONTAINER" ]]; then
             APP_EXISTS=true
         else
             APP_EXISTS=false
