@@ -9,15 +9,12 @@ if [[ $1 == arangodb:* ]]; then
     else
         APP="$2"
         # Check if app exists with the same name
-        if [[ -f "$DOKKU_ROOT/$APP/CONTAINER" ]]; then
+        if [[ -e "$DOKKU_ROOT/$APP" ]]; then
             APP_EXISTS=true
         else
+                echo "NO SUCH APP"
             APP_EXISTS=false
         fi
-    fi
-    if [[ ! -d "$PLUGIN_PATH/link" ]]; then
-        echo "Link plugin not found... Did you install it from https://github.com/rlaneve/dokku-link?"
-        exit 1
     fi
 
     PLUGIN_NAME="arangodb"
@@ -51,7 +48,7 @@ case "$1" in
     VOLUME="$HOST_DIR:/var/lib/arangodb"
 
     # Launch container
-    docker run -name=$CONTAINER_NAME -d arangodb /bin/bash -c "service arangodb start; tail -f /var/log/arangodb/arangod.log"
+    docker run --name=$CONTAINER_NAME -d arangodb /bin/bash -c "service arangodb start; tail -f /var/log/arangodb/arangod.log"
 
     # Link to a potential existing app
     if $APP_EXISTS; then
@@ -76,8 +73,8 @@ case "$1" in
 
     # unlink this container as "arangodb"
     if $APP_EXISTS; then
-        dokku link:delete "$APP" "$CONTAINER_NAME" "$PLUGIN_NAME"
-        dokku config:unset "$APP" $ENVVAR_NAME
+        dokku docker-options:remove build "$APP" "$CONTAINER_NAME"
+        dokku docker-options:remove run "$APP" "$CONTAINER_NAME"
     fi
     echo "-----> ArangoDB container deleted: $CONTAINER_NAME"
     ;;
@@ -101,7 +98,8 @@ case "$1" in
         CONTAINER_NAME="${PLUGIN_NAME}_${3}"
 
         # link this container as "arangodb"
-        dokku link:create "$APP" "$CONTAINER_NAME" "$PLUGIN_NAME"
+        dokku docker-options:ADD deploy --link "$APP" "$CONTAINER_NAME"
+        dokku docker-options:ADD run --link "$APP" "$CONTAINER_NAME"
 
         # figure out IP to set env var
         ID=$(docker ps -a | grep "$CONTAINER_NAME" | awk '{print $1}')
